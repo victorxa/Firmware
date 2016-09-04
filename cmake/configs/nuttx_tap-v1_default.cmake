@@ -76,6 +76,7 @@ set(config_module_list
 	# Logging
 	#
 	modules/logger
+	modules/sdlog2
 
 	#
 	# Library modules
