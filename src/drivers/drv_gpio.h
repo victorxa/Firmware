@@ -237,21 +237,21 @@
 
 #endif
 
-#ifdef CONFIG_ARCH_BOARD_TAP_V1
+#if defined (CONFIG_ARCH_BOARD_TAP_V1) || (CONFIG_ARCH_BOARD_TAP_V2)
 /*
  * PX4FMUv3 GPIO numbers.
  *
  * There are no alternate functions on this board.
  */
-# define GPIO_SERVO_1			(1<<0)		/**< servo 1 output */
-# define GPIO_SERVO_2			(1<<1)		/**< servo 2 output */
-# define GPIO_SERVO_3			(1<<2)		/**< servo 3 output */
-# define GPIO_SERVO_4			(1<<3)		/**< servo 4 output */
+# define GPIO_SERVO_1           (1<<0)      /**< servo 1 output */
+# define GPIO_SERVO_2           (1<<1)      /**< servo 2 output */
+# define GPIO_SERVO_3           (1<<2)      /**< servo 3 output */
+# define GPIO_SERVO_4           (1<<3)      /**< servo 4 output */
 
 /**
  * Device paths for things that support the GPIO ioctl protocol.
  */
-# define PX4FMU_DEVICE_PATH	"/dev/px4fmu"
+# define PX4FMU_DEVICE_PATH "/dev/px4fmu"
 
 #endif
 
@@ -317,7 +317,8 @@
 	!defined(CONFIG_ARCH_BOARD_PX4IO_V2)             && \
 	!defined(CONFIG_ARCH_BOARD_PX4NUCLEOF767ZI_V1)   && \
 	!defined(CONFIG_ARCH_BOARD_SITL)                 && \
-	!defined(CONFIG_ARCH_BOARD_TAP_V1)
+    !defined(CONFIG_ARCH_BOARD_TAP_V1)               && \
+    !defined(CONFIG_ARCH_BOARD_TAP_V2)
 # error No CONFIG_ARCH_BOARD_xxxx set
 #endif
 /*
