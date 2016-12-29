@@ -999,6 +999,9 @@ int tap_esc_stop(void)
 
 int initialise_uart()
 {
+#if defined(CONFIG_ARCH_BOARD_TAP_V2) && defined(CONFIG_USART3_SERIAL_CONSOLE)
+	return -1;
+#else
 	// open uart
 	_uart_fd = open(_device, O_RDWR | O_NOCTTY | O_NONBLOCK);
 	int termios_state = -1;
@@ -1035,6 +1038,7 @@ int initialise_uart()
 	}
 
 	return _uart_fd;
+#endif
 }
 
 int enable_flow_control(bool enabled)
