@@ -244,6 +244,15 @@ endif()
 set(BUILD_SHARED_LIBS OFF)
 
 #=============================================================================
+# ccacche
+#
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+	message(STATUS "Enabled ccache")
+	set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
+endif()
+
+#=============================================================================
 # project definition
 #
 project(px4 CXX C ASM)
