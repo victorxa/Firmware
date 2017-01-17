@@ -2568,7 +2568,7 @@ int commander_thread_main(int argc, char *argv[])
 			 * check if left stick is in lower left position or arm button is pushed or arm switch has transition from arm to disarm
 			 * and we are in MANUAL, Rattitude, or AUTO_READY mode or (ASSIST mode and landed)
 			 * do it only for rotary wings in manual mode or fixed wing if landed */
-			const bool stick_in_lower_left = sp_man.r < -STICK_ON_OFF_LIMIT && sp_man.z < 0.1f;
+			const bool stick_in_lower_left = (sp_man.arm_switch == manual_control_setpoint_s::SWITCH_POS_NONE) && sp_man.r < -STICK_ON_OFF_LIMIT && sp_man.z < 0.1f;
 			const bool arm_switch_to_disarm_transition =  arm_switch_is_button == 0 &&
 					_last_sp_man_arm_switch == manual_control_setpoint_s::SWITCH_POS_ON &&
 					sp_man.arm_switch == manual_control_setpoint_s::SWITCH_POS_OFF;
@@ -2582,6 +2582,7 @@ int commander_thread_main(int argc, char *argv[])
 						internal_state.main_state != commander_state_s::MAIN_STATE_ACRO &&
 						internal_state.main_state != commander_state_s::MAIN_STATE_STAB &&
 						internal_state.main_state != commander_state_s::MAIN_STATE_RATTITUDE &&
+						!arm_switch_to_disarm_transition &&
 						!land_detector.landed) {
 					print_reject_arm("NOT DISARMING: Not in manual mode or landed yet.");
 
@@ -2614,7 +2615,7 @@ int commander_thread_main(int argc, char *argv[])
 			/* ARM
 			 * check if left stick is in lower right position or arm button is pushed or arm switch has transition from disarm to arm
 			 * and we're in MANUAL mode */
-			const bool stick_in_lower_right = (sp_man.r > STICK_ON_OFF_LIMIT && sp_man.z < 0.1f);
+			const bool stick_in_lower_right = (sp_man.arm_switch == manual_control_setpoint_s::SWITCH_POS_NONE) && (sp_man.r > STICK_ON_OFF_LIMIT && sp_man.z < 0.1f);
 			const bool arm_switch_to_arm_transition = arm_switch_is_button == 0 &&
 					_last_sp_man_arm_switch == manual_control_setpoint_s::SWITCH_POS_OFF &&
 					sp_man.arm_switch == manual_control_setpoint_s::SWITCH_POS_ON;
@@ -2635,6 +2636,7 @@ int commander_thread_main(int argc, char *argv[])
 						&& (internal_state.main_state != commander_state_s::MAIN_STATE_ALTCTL)
 						&& (internal_state.main_state != commander_state_s::MAIN_STATE_POSCTL)
 						&& (internal_state.main_state != commander_state_s::MAIN_STATE_RATTITUDE)
+						&& (internal_state.main_state != commander_state_s::MAIN_STATE_SMART)
 						) {
 						print_reject_arm("NOT ARMING: Switch to a manual mode first.");
 
@@ -3412,6 +3414,18 @@ set_main_state_rc(struct vehicle_status_s *status_local)
 					}
 				}
 
+				if (new_mode == commander_state_s::MAIN_STATE_SMART) {
+
+					/* fall back to altitude control */
+					new_mode = commander_state_s::MAIN_STATE_ALTCTL;
+					print_reject_mode(status_local, "SMART CONTROL");
+					res = main_state_transition(status_local, new_mode, main_state_prev, &status_flags, &internal_state);
+
+					if (res != TRANSITION_DENIED) {
+						break;
+					}
+				}
+
 				if (new_mode == commander_state_s::MAIN_STATE_POSCTL) {
 
 					/* fall back to altitude control */
@@ -3592,6 +3606,22 @@ set_control_mode()
 		control_mode.flag_control_velocity_enabled = false;
 		control_mode.flag_control_acceleration_enabled = false;
 		control_mode.flag_control_termination_enabled = false;
+		control_mode.flag_control_smart_enabled = false;
+		break;
+
+	case vehicle_status_s::NAVIGATION_STATE_SMART:
+		control_mode.flag_control_manual_enabled = true;
+		control_mode.flag_control_auto_enabled = false;
+		control_mode.flag_control_rates_enabled = true;
+		control_mode.flag_control_attitude_enabled = true;
+		control_mode.flag_control_rattitude_enabled = false;
+		control_mode.flag_control_altitude_enabled = true;
+		control_mode.flag_control_climb_rate_enabled = true;
+		control_mode.flag_control_position_enabled = !status.in_transition_mode;
+		control_mode.flag_control_velocity_enabled = !status.in_transition_mode;
+		control_mode.flag_control_acceleration_enabled = false;
+		control_mode.flag_control_termination_enabled = false;
+		control_mode.flag_control_smart_enabled = true;
 		break;
 
 	case vehicle_status_s::NAVIGATION_STATE_STAB:
@@ -3608,6 +3638,7 @@ set_control_mode()
 		control_mode.flag_control_termination_enabled = false;
 		/* override is not ok in stabilized mode */
 		control_mode.flag_external_manual_override_ok = false;
+		control_mode.flag_control_smart_enabled = false;
 		break;
 
 	case vehicle_status_s::NAVIGATION_STATE_RATTITUDE:
@@ -3622,6 +3653,7 @@ set_control_mode()
 		control_mode.flag_control_velocity_enabled = false;
 		control_mode.flag_control_acceleration_enabled = false;
 		control_mode.flag_control_termination_enabled = false;
+		control_mode.flag_control_smart_enabled = false;
 		break;
 
 	case vehicle_status_s::NAVIGATION_STATE_ALTCTL:
@@ -3636,6 +3668,7 @@ set_control_mode()
 		control_mode.flag_control_velocity_enabled = false;
 		control_mode.flag_control_acceleration_enabled = false;
 		control_mode.flag_control_termination_enabled = false;
+		control_mode.flag_control_smart_enabled = false;
 		break;
 
 	case vehicle_status_s::NAVIGATION_STATE_POSCTL:
@@ -3650,6 +3683,7 @@ set_control_mode()
 		control_mode.flag_control_velocity_enabled = !status.in_transition_mode;
 		control_mode.flag_control_acceleration_enabled = false;
 		control_mode.flag_control_termination_enabled = false;
+		control_mode.flag_control_smart_enabled = false;
 		break;
 
 	case vehicle_status_s::NAVIGATION_STATE_AUTO_RTL:
@@ -3675,6 +3709,7 @@ set_control_mode()
 		control_mode.flag_control_velocity_enabled = !status.in_transition_mode;
 		control_mode.flag_control_acceleration_enabled = false;
 		control_mode.flag_control_termination_enabled = false;
+		control_mode.flag_control_smart_enabled = false;
 		break;
 
 	case vehicle_status_s::NAVIGATION_STATE_AUTO_LANDGPSFAIL:
@@ -3689,6 +3724,7 @@ set_control_mode()
 		control_mode.flag_control_velocity_enabled = false;
 		control_mode.flag_control_acceleration_enabled = false;
 		control_mode.flag_control_termination_enabled = false;
+		control_mode.flag_control_smart_enabled = false;
 		break;
 
 	case vehicle_status_s::NAVIGATION_STATE_ACRO:
@@ -3703,6 +3739,7 @@ set_control_mode()
 		control_mode.flag_control_velocity_enabled = false;
 		control_mode.flag_control_acceleration_enabled = false;
 		control_mode.flag_control_termination_enabled = false;
+		control_mode.flag_control_smart_enabled = false;
 		break;
 
 	case vehicle_status_s::NAVIGATION_STATE_DESCEND:
@@ -3718,6 +3755,7 @@ set_control_mode()
 		control_mode.flag_control_altitude_enabled = false;
 		control_mode.flag_control_climb_rate_enabled = true;
 		control_mode.flag_control_termination_enabled = false;
+		control_mode.flag_control_smart_enabled = false;
 		break;
 
 	case vehicle_status_s::NAVIGATION_STATE_TERMINATION:
@@ -3733,6 +3771,7 @@ set_control_mode()
 		control_mode.flag_control_altitude_enabled = false;
 		control_mode.flag_control_climb_rate_enabled = false;
 		control_mode.flag_control_termination_enabled = true;
+		control_mode.flag_control_smart_enabled = false;
 		break;
 
 	case vehicle_status_s::NAVIGATION_STATE_OFFBOARD:
