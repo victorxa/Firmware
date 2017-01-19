@@ -55,6 +55,7 @@ set(config_module_list
 	# General system control
 	#
 	modules/commander
+	modules/events
 	modules/load_mon
 	modules/navigator
 	modules/mavlink
