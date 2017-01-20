@@ -1,1 +1,1 @@
-include(configs/posix_sitl_lpe)
+include(configs/posix_sitl_iekf)

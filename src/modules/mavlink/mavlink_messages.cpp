@@ -1685,7 +1685,10 @@ protected:
 	explicit MavlinkStreamLocalPositionNEDCOV(Mavlink *mavlink) : MavlinkStream(mavlink),
 		_est_sub(_mavlink->add_orb_subscription(ORB_ID(estimator_status))),
 		_est_time(0)
-	{}
+	{
+
+		PX4_INFO("ctor local position ned cov");
+	}
 
 	void send(const hrt_abstime t)
 	{

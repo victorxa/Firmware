@@ -6,7 +6,7 @@ param set VT_MOT_COUNT 4
 param set VT_TRANS_THR 0.75
 param set SYS_AUTOSTART 13006
 param set SYS_RESTART_TYPE 2
-param set SYS_MC_EST_GROUP 1
+param set SYS_MC_EST_GROUP 3
 dataman start
 param set BAT_N_CELLS 3
 param set CAL_GYRO0_ID 2293768
@@ -73,8 +73,7 @@ sensors start
 commander start
 land_detector start multicopter
 navigator start
-attitude_estimator_q start
-local_position_estimator start
+iekf start
 vtol_att_control start
 mc_pos_control start
 mc_att_control start

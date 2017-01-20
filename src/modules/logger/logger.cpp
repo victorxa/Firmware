@@ -517,6 +517,13 @@ void Logger::add_default_topics()
 	add_topic("vehicle_attitude_groundtruth", 10);
 	add_topic("vehicle_global_position_groundtruth", 100);
 	add_topic("vehicle_local_position_groundtruth", 100);
+
+	// topics required for imu calibration
+	add_topic("sensor_gyro");
+	add_topic("sensor_mag");
+	add_topic("sensor_accel");
+	add_topic("sensor_baro");
+
 #endif
 
 	// Note: try to avoid setting the interval where possible, as it increases RAM usage
@@ -561,7 +568,7 @@ void Logger::add_default_topics()
 	add_topic("sensor_preflight");
 	add_topic("low_stack");
 
-	/* for estimator replay (need to be at full rate) */
+	// for estimator replay (need to be at full rate)
 	add_topic("sensor_combined");
 	add_topic("vehicle_gps_position");
 	add_topic("vehicle_land_detected");
