@@ -58,6 +58,19 @@ static const char sz_ver_all_str[] 	= "all";
 static const char mcu_ver_str[]		= "mcu";
 static const char mcu_uid_str[]         = "uid";
 
+#if defined(PX4_CPU_UUID_WORD32_FORMAT)
+#  define CPU_UUID_FORMAT PX4_CPU_UUID_WORD32_FORMAT
+#else
+#  define CPU_UUID_FORMAT "%X"
+#endif
+
+#if defined(PX4_CPU_UUID_WORD32_SEPARATOR)
+#  define CPU_UUID_SEPARATOR PX4_CPU_UUID_WORD32_SEPARATOR
+#else
+#  define CPU_UUID_SEPARATOR ":"
+#endif
+
+
 static void usage(const char *reason)
 {
 	if (reason != NULL) {
@@ -195,7 +208,7 @@ int ver_main(int argc, char *argv[])
 				char *uid_fmt_buffer = BOARD_OVERRIDE_UUID;
 #else
 				char uid_fmt_buffer[PX4_CPU_UUID_WORD32_FORMAT_SIZE];
-				board_get_uuid_formated32(uid_fmt_buffer, sizeof(uid_fmt_buffer), "%X", ":");
+				board_get_uuid_formated32(uid_fmt_buffer, sizeof(uid_fmt_buffer), CPU_UUID_FORMAT, CPU_UUID_SEPARATOR);
 #endif
 				printf("UID: %s \n", uid_fmt_buffer);
 				ret = 0;
