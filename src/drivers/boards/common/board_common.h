@@ -343,7 +343,7 @@ __EXPORT void board_get_uuid_raw(raw_uuid_byte_t *raw_uuid_bytes);
 #if defined(PX4_CPU_UUID_BYTE_FORMAT_ORDER)
 __EXPORT void board_get_uuid(raw_uuid_byte_t raw_uuid_bytes);
 #else
-#  define board_get_uuid(b) board_get_uuid_raw(&b)
+#  define board_get_uuid(b) board_get_uuid_raw((raw_uuid_byte_t*)&(b))
 #endif
 
 /************************************************************************************
