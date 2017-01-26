@@ -41,44 +41,48 @@
 #include <stdio.h>
 #include <string.h>
 
-const raw_uuid_uint32_reorder_t px4_legacy_word32_order = PX4_CPU_UUID_WORD32_LEGACY_FORMAT_ORDER;
+/* A type suitable for holding the reordering array for the byte format of the UUID
+ */
+typedef const uint8_t uuid_uint8_reorder_t[PX4_CPU_UUID_BYTE_LENGTH];
+typedef const uint8_t raw_uuid_uint32_reorder_t[PX4_CPU_UUID_WORD32_LENGTH];
+
 
 void board_get_uuid_raw(raw_uuid_byte_t *raw_uuid)
 {
 	memcpy(raw_uuid, (uint8_t *) STM32_SYSMEM_UID, PX4_CPU_UUID_BYTE_LENGTH);
 }
 
-void board_get_uuid(raw_uuid_byte_t uuid, uuid_uint8_reorder_t reorder)
+void board_get_uuid(raw_uuid_byte_t uuid)
 {
+	uuid_uint8_reorder_t reorder = PX4_CPU_UUID_BYTE_FORMAT_ORDER;
 	raw_uuid_byte_t raw_uuid;
+
+	/* Copy the serial from the chips non-write memory */
+
 	board_get_uuid_raw(&raw_uuid);
+
+	/* swap endianess */
 
 	for (int i = 0; i < PX4_CPU_UUID_BYTE_LENGTH; i++) {
 		uuid[i] = raw_uuid[reorder[i]];
 	}
 }
 
-__EXPORT void board_get_uuid_raw32(raw_uuid_uint32_t raw_uuid_words,
-				   raw_uuid_uint32_reorder_t *optional_reorder)
+__EXPORT void board_get_uuid32(raw_uuid_uint32_t raw_uuid_words)
 {
-	if (optional_reorder == NULL) {
-		optional_reorder = &px4_legacy_word32_order;
-	}
-
 	uint32_t *chip_uuid = (uint32_t *) STM32_SYSMEM_UID;
 
 	for (int i = 0; i < PX4_CPU_UUID_WORD32_LENGTH; i++) {
-		raw_uuid_words[i] = chip_uuid[(*optional_reorder)[i]];
+		raw_uuid_words[i] = chip_uuid[i];
 	}
 }
 
 int board_get_uuid_formated32(char *format_buffer, int size,
 			      const char *format,
-			      const char *seperator,
-			      raw_uuid_uint32_reorder_t *optional_reorder)
+			      const char *seperator)
 {
 	raw_uuid_uint32_t uuid;
-	board_get_uuid_raw32(uuid, optional_reorder);
+	board_get_uuid32(uuid);
 	int offset = 0;
 	int sep_size = seperator ? strlen(seperator) : 0;
 
