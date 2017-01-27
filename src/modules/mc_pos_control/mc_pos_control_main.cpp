@@ -1736,6 +1736,11 @@ MulticopterPositionControl::control_position(float dt)
 			if (set_thrust_xy_to_0) {
 				thrust_sp(0) = 0.0f;
 				thrust_sp(1) = 0.0f;
+				/* reset position and velocity such that in states corrspond to zero thrust */
+				_pos_sp(0) = _pos(0);
+				_pos_sp(1) = _pos(1);
+				_vel_sp(0) = _vel(0);
+				_vel_sp(1) = _vel(1);
 			}
 		}
 
