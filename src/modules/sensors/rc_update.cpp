@@ -47,17 +47,14 @@
 #include <uORB/topics/actuator_controls.h>
 #include <uORB/topics/manual_control_setpoint.h>
 
-#define RC_SAMPLING_RATE 33.3f
-#define RC_FILTER_LP_CUTOFF 5.0f
-
 using namespace sensors;
 
 RCUpdate::RCUpdate(const Parameters &parameters)
 	: _parameters(parameters),
-	  _filter_roll(RC_SAMPLING_RATE, RC_FILTER_LP_CUTOFF),
-	  _filter_pitch(RC_SAMPLING_RATE, RC_FILTER_LP_CUTOFF),
-	  _filter_yaw(RC_SAMPLING_RATE, RC_FILTER_LP_CUTOFF),
-	  _filter_throttle(RC_SAMPLING_RATE, RC_FILTER_LP_CUTOFF)
+	  _filter_roll(50.0f, 1e3f), /* no filtering without the parameter */
+	  _filter_pitch(50.0f, 1e3f),
+	  _filter_yaw(50.0f, 1e3f),
+	  _filter_throttle(50.0f, 1e3f)
 {
 	memset(&_rc, 0, sizeof(_rc));
 	memset(&_rc_parameter_map, 0, sizeof(_rc_parameter_map));
@@ -358,11 +355,11 @@ RCUpdate::rc_poll(const ParameterHandles &parameter_handles)
 			manual.timestamp = rc_input.timestamp_last_signal;
 			manual.data_source = manual_control_setpoint_s::SOURCE_RC;
 
-			/* limit controls */
-			manual.y = _filter_roll.apply(get_rc_value(rc_channels_s::RC_CHANNELS_FUNCTION_ROLL, -1.0, 1.0));
-			manual.x = _filter_pitch.apply(get_rc_value(rc_channels_s::RC_CHANNELS_FUNCTION_PITCH, -1.0, 1.0));
-			manual.r = _filter_yaw.apply(get_rc_value(rc_channels_s::RC_CHANNELS_FUNCTION_YAW, -1.0, 1.0));
-			manual.z = _filter_throttle.apply(get_rc_value(rc_channels_s::RC_CHANNELS_FUNCTION_THROTTLE, 0.0, 1.0));
+			/* filter and limit controls */
+			manual.y = get_rc_value(_filter_roll.apply(rc_channels_s::RC_CHANNELS_FUNCTION_ROLL), -1.0, 1.0);
+			manual.x = get_rc_value(_filter_pitch.apply(rc_channels_s::RC_CHANNELS_FUNCTION_PITCH), -1.0, 1.0);
+			manual.r = get_rc_value(_filter_yaw.apply(rc_channels_s::RC_CHANNELS_FUNCTION_YAW), -1.0, 1.0);
+			manual.z = get_rc_value(_filter_throttle.apply(rc_channels_s::RC_CHANNELS_FUNCTION_THROTTLE), 0.0, 1.0);
 			manual.flaps = get_rc_value(rc_channels_s::RC_CHANNELS_FUNCTION_FLAPS, -1.0, 1.0);
 			manual.aux1 = get_rc_value(rc_channels_s::RC_CHANNELS_FUNCTION_AUX_1, -1.0, 1.0);
 			manual.aux2 = get_rc_value(rc_channels_s::RC_CHANNELS_FUNCTION_AUX_2, -1.0, 1.0);
