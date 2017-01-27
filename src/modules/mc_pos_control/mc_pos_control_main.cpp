@@ -271,6 +271,7 @@ private:
 	math::Vector<3> _vel_err_d;		/**< derivative of current velocity */
 
 	math::Matrix<3, 3> _R;			/**< rotation matrix from attitude quaternions */
+	matrix::Quatf _q_att;			/**< attitude of vechile: only needed since two version of matrix lib used */
 	float _yaw;				/**< yaw angle (euler) */
 	bool _in_landing;	/**< the vehicle is in the landing descent */
 	bool _lnd_reached_ground; /**< controller assumes the vehicle has reached the ground after landing */
@@ -470,6 +471,7 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_vel_err_d.zero();
 
 	_R.identity();
+
 
 	_R_setpoint.identity();
 
@@ -698,6 +700,7 @@ MulticopterPositionControl::poll_subscriptions()
 		orb_copy(ORB_ID(control_state), _ctrl_state_sub, &_ctrl_state);
 
 		/* get current rotation matrix and euler angles from control state quaternions */
+		_q_att = matrix::Quatf(_ctrl_state.q[0], _ctrl_state.q[1], _ctrl_state.q[2], _ctrl_state.q[3]); //needed because of different set of matrix lib
 		math::Quaternion q_att(_ctrl_state.q[0], _ctrl_state.q[1], _ctrl_state.q[2], _ctrl_state.q[3]);
 		_R = q_att.to_dcm();
 		math::Vector<3> euler_angles;
@@ -1727,21 +1730,6 @@ MulticopterPositionControl::control_position(float dt)
 			thrust_sp = vel_err.emult(_params.vel_p) + _vel_err_d.emult(_params.vel_d)
 				    + _thrust_int - math::Vector<3>(0.0f, 0.0f, _params.thr_hover);
 
-			/* at low thrust in z direction while position hold is engaged, we set thrust in xy to 0
-			 * until thrust in z again reaches large enough thrust. this helps to prevent the jerk when
-			 * flying upward while position hold is engaged
-			 */
-			bool set_thrust_xy_to_0 = _pos_hold_engaged && _alt_hold_engaged && (-thrust_sp(2) < 2.0f * _params.thr_min);
-
-			if (set_thrust_xy_to_0) {
-				thrust_sp(0) = 0.0f;
-				thrust_sp(1) = 0.0f;
-				/* reset position and velocity such that in states corrspond to zero thrust */
-				_pos_sp(0) = _pos(0);
-				_pos_sp(1) = _pos(1);
-				_vel_sp(0) = _vel(0);
-				_vel_sp(1) = _vel(1);
-			}
 		}
 
 		if (_pos_sp_triplet.current.type == position_setpoint_s::SETPOINT_TYPE_TAKEOFF
@@ -1896,13 +1884,34 @@ MulticopterPositionControl::control_position(float dt)
 			thrust_sp(2) *= att_comp;
 		}
 
+
 		/* Calculate desired total thrust amount in body z direction. */
 		/* To compensate for excess thrust during attitude tracking errors we
 		 * project the desired thrust force vector F onto the real vehicle's thrust axis in NED:
 		 * body thrust axis [0,0,-1]' rotated by R is: R*[0,0,-1]' = -R_z */
-		matrix::Vector3f R_z(_R(0, 2), _R(1, 2), _R(2, 2));
 		matrix::Vector3f F(thrust_sp.data);
-		float thrust_body_z = F.dot(-R_z); /* recalculate because it might have changed */
+		matrix::Vector3f R_z(_R(0, 2), _R(1, 2), _R(2, 2));
+		float thrust_body_z = F.dot(-R_z);
+		thrust_sp = thrust_sp.normalized() * fabsf(thrust_body_z);
+
+		/* To keep the attitude at low thrust_setpoint_z, we ajdust the thrust_setpoint_xy such that no
+		 * jerk happens when entering altitude hold when position hold is engaged
+		 */
+		bool keep_attitude = _pos_hold_engaged && _alt_hold_engaged && (-thrust_sp(2) < 2.0f * _params.thr_min);
+		if(keep_attitude){
+			/* project current attitude times thrust_bodyz_z onto xy plane */
+			matrix::Vector3f z(0.0f,0.0f,1.0f); // z axis corresponding to world z or body z depending on usage
+			matrix::Dcmf R = _q_att;
+			matrix::Vector3f thrust_z_current = -(R * z) * thrust_body_z; //current thrust axis times thrust body z
+			matrix::Vector3f projection_xy = thrust_z_current - z * (thrust_z_current * z); //projection of thrust_z_current onto the xy plane
+
+			/* recompute thrust_setpoint */
+			F = projection_xy + z * thrust_sp(2);
+			thrust_sp(0) = F(0);
+			thrust_sp(1) = F(1);
+			thrust_sp(2) = F(2);
+			thrust_body_z = thrust_sp.length() * (thrust_body_z > 0.0f ? 1.0f : -1.0f);
+		}
 
 		/* limit max thrust */
 		if (fabsf(thrust_body_z) > thr_max) {
@@ -1996,7 +2005,6 @@ MulticopterPositionControl::control_position(float dt)
 				_R_setpoint(i, 1) = body_y(i);
 				_R_setpoint(i, 2) = body_z(i);
 			}
-
 			/* copy quaternion setpoint to attitude setpoint topic */
 			matrix::Quatf q_sp = _R_setpoint;
 			memcpy(&_att_sp.q_d[0], q_sp.data(), sizeof(_att_sp.q_d));
