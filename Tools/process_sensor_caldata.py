@@ -30,6 +30,7 @@ from __future__ import print_function
 import argparse
 import json
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 
 import pandas
 from numpy.polynomial import Polynomial
@@ -78,23 +79,31 @@ def temperature_calibration(ulog_filename, do_plot):
     r = ulog2pandas(log)
     coeffs = {}
 
+    pdf_filename = "{:s}_temp_cal.pdf".format(
+        ulog_filename.replace('.ulg',''))
+
+    # default for config
+    config = {
+        'fields': [],
+        'units': [],
+        'poly_deg': 3,
+        'xlabel': 'Temp, deg C',
+        'ylabel': '',
+        'min': lambda x: x.min(),
+        'max': lambda x: x.max(),
+        'ref': lambda x: (x.min() + x.max())/2,
+        'offset': lambda y: 0,
+        'save_plot': True,
+        'plot_interval': '5 s',
+    }
+
+    pdf = PdfPages(pdf_filename)
+
     for topic in r.keys():
         for multi_id in r[topic].keys():
 
             name = '{:s}_{:d}'.format(topic, multi_id)
             print('processing', name)
-
-            # default for config
-            config = {
-                'fields': [],
-                'units': [],
-                'poly_deg': 3,
-                'xlabel': 'Temp, deg C',
-                'ylabel': '',
-                'offset': lambda y: 0,
-                'save_plot': True,
-                'plot_interval': '20 s',
-            }
 
             if topic == 'sensor_baro':
                 config['fields'] = ['altitude']
@@ -120,9 +129,9 @@ def temperature_calibration(ulog_filename, do_plot):
             # default for coefficients
             coeffs[name] = {
                 'poly': {},
-                'T_min': x.min(),
-                'T_max': x.max(),
-                'T_ref': 0,
+                'T_min': config['min'](x),
+                'T_max': config['max'](x),
+                'T_ref': config['ref'](x),
             }
 
             plt.figure()
@@ -138,8 +147,10 @@ def temperature_calibration(ulog_filename, do_plot):
                         x=x, y=y, f_poly=f_poly, name=name, field=field,
                         config=config)
                     if config['save_plot'] and i == len(config['fields']) - 1:
-                        plt.savefig('{:s}.pdf'.format(name))
+                        pdf.savefig()
+                        plt.close()
 
+    pdf.close()
 
     with open(ulog_filename.replace('ulg', 'params'), 'w') as fid:
         fid.write(json.dumps(coeffs, indent=2, sort_keys=True))
