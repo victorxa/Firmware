@@ -28,178 +28,127 @@ Outputs summary plots in a pdf file named <inputfilename>.pdf
 from __future__ import print_function
 
 import argparse
-import os
+import json
 import matplotlib.pyplot as plt
-import numpy as np
 
+import pandas
+from numpy.polynomial import Polynomial
+import numpy as np
 import pyulog
 
-class Param(dict):
-    def __init__(self, name, val):
-        """
-        Initialize a param dict
-        """
-        self.name = name
-        self.val = val
+# pylint: disable=invalid-name
 
-def temp_calibration(data, topic, fields, units, label):
+
+def ulog2pandas(log):
     """
-    Performe a temperature calibration on a sensor.
+    Convert from ulog to pandas using dictionary
     """
-
-    # pylint: disable=no-member
-    params = {}
-
-    int_params = ['ID']
-    float_params = [
-        'TMIN', 'TMAX', 'TREF',
-        'X0_0', 'X1_0', 'X2_0', 'X3_0',
-        'X0_1', 'X1_1', 'X2_1', 'X3_1',
-        'X0_2', 'X1_2', 'X2_2', 'X3_2',
-        'SCL_0', 'SCL_1', 'SCL_2'
-    ]
-
-    # define data dictionary of thermal correction  parameters
-    for field in int_params:
-        params[field] = {
-            'val': 0,
-            'type': 'INT',
-        }
-
-    for field in float_params: params[field] = {
-            'val': 0,
-            'type': 'FLOAT',
-        }
-
-    # curve fit the data for corrections - note
-    #   corrections have oppsite sign to sensor bias
-    try:
-        params['ID']['val'] = int(np.median(data['device_id']))
-    except:
-        print('no device id')
-        pass
-
-    # find the min, max and reference temperature
-    params['TMIN']['val'] = float(np.amin(data['temperature']))
-    params['TMAX']['val'] = float(np.amax(data['temperature']))
-    params['TREF']['val'] = float(0.5 * (params['TMIN']['val'] + params['TMAX']['val']))
-    temp_rel = data['temperature'] - params['TREF']['val']
-    temp_rel_resample = np.linspace(
-        float(params['TMIN']['val'] - params['TREF']['val']),
-        float(params['TMAX']['val'] - params['TREF']['val']), 100)
-    temp_resample = temp_rel_resample + params['TREF']['val']
-
-    for i, field in enumerate(fields):
-        coef = np.polyfit(temp_rel, -data[field], 3)
-        for j in range(3):
-            params['X{:d}_{:d}'.format(3-j, i)]['val'] = float(coef[j])
-        fit_coef = np.poly1d(coef)
-        resample = fit_coef(temp_rel_resample)
-
-        # draw plots
-        plt.subplot(len(fields), 1, i + 1)
-        plt.plot(data['temperature'], data[field], 'b')
-        plt.plot(temp_resample, -resample, 'r')
-        plt.title('{:s} Bias vs Temperature'.format(topic))
-        plt.ylabel('{:s} bias {:s}'.format(field, units))
-        plt.xlabel('temperature (degC)')
-        plt.grid()
-
-    return params
+    r = {}
+    for msg in log.data_list:
+        data = pandas.DataFrame.from_dict(msg.data, dtype=float)
+        data.index = pandas.TimedeltaIndex(data.timestamp, 'us')
+        if msg.name not in r.keys():
+            r[msg.name] = {}
+        r[msg.name][msg.multi_id] = data
+    return r
 
 
-def process_file(log_path, out_path, template_path):
+def fitPlot(x, y, f_poly, name, field, config):
     """
-    Command line interface to temperature calibration.
+    A temperature calibration fit plot.
     """
-    log = pyulog.ULog(log_path, 'sensor_gyro, sensor_accel, sensor_baro')
-    data = {}
-    for d in log.data_list:
-        data['{:s}_{:d}'.format(d.name, d.multi_id)] = d.data
+    # pylint: disable=too-many-arguments
+    x = x.resample(config['plot_interval']).mean()
+    y = y.resample(config['plot_interval']).mean()
+    plt.plot(x, y, '.', label=field)
+    x_resample = np.linspace(x.min(), x.max())
+    plt.plot(x_resample, f_poly(x_resample), '-',  label='{:s} fit'.format(field))
+    plt.title('{:s} temperature calibration'.format(name))
+    plt.xlabel(config['xlabel'])
+    plt.ylabel(config['ylabel'])
+    plt.legend(loc='best', ncol=3)
 
-    params = {}
+def temperature_calibration(ulog_filename, do_plot):
+    """
+    Do a temperature calibration
+    @param ulog_filename : log filename
+    @do_plot : create plots, save to pdf
+    """
+    log = pyulog.ULog(ulog_filename)
+    r = ulog2pandas(log)
+    coeffs = {}
 
-    # open file to save plots to PDF
-    # from matplotlib.backends.backend_pdf import PdfPages
-    # output_plot_filename = ulog_file_name + ".pdf"
-    # pp = PdfPages(output_plot_filename)
+    for topic in r.keys():
+        for multi_id in r[topic].keys():
 
-    configs = [
-        {
-            'msg': 'sensor_gyro',
-            'fields': ['x', 'y', 'z'],
-            'units': 'rad/s',
-            'label': 'TC_G'
-        },
-        {
-            'msg': 'sensor_accel',
-            'fields': ['x', 'y', 'z'],
-            'units': 'm/s^2',
-            'label': 'TC_A'
-        },
-        {
-            'msg': 'sensor_baro',
-            'fields': ['pressure'],
-            'units': 'm',
-            'label': 'TC_B'
-        },
-    ]
+            name = '{:s}_{:d}'.format(topic, multi_id)
+            print('processing', name)
 
-    for config in configs:
-        for d in log.data_list:
-            if d.name == config['msg']:
-                plt.figure(figsize=(20, 13))
-                topic = '{:s}_{:d}'.format(d.name, d.multi_id)
-                print('found {:s} data'.format(topic))
-                label='{:s}{:d}'.format(
-                    config['label'], d.multi_id)
-                params[topic] = {
-                    'params': temp_calibration(
-                        data=d.data, topic=topic,
-                        fields=config['fields'],
-                        units=config['units'],
-                        label=label),
-                    'label': label
-                }
-                plt.savefig('{:s}_cal.pdf'.format(topic))
+            # default for config
+            config = {
+                'fields': [],
+                'units': [],
+                'poly_deg': 3,
+                'xlabel': 'Temp, deg C',
+                'ylabel': '',
+                'offset': lambda y: 0,
+                'save_plot': True,
+                'plot_interval': '20 s',
+            }
 
-    # JSON file generation
-    # import json
-    # print(json.dumps(params, indent=2))
+            if topic == 'sensor_baro':
+                config['fields'] = ['altitude']
+                config['ylabel'] = 'pressure altitude, m'
+                config['offset'] = lambda y: y.median()
+            elif topic == 'sensor_gyro':
+                config['fields'] = ['x', 'y', 'z']
+                config['ylabel'] = 'gyro, rad/s'
+            elif topic == 'sensor_accel':
+                config['fields'] = ['x', 'y', 'z']
+                config['ylabel'] = 'accel, m/s^2'
+                config['offset'] = lambda y: y.median()
+            else:
+                continue
 
-    body = ''
-    for sensor in sorted(params.keys()):
-        for param in sorted(params[sensor]['params'].keys()):
-            label = params[sensor]['label']
-            pdict = params[sensor]['params'] 
-            if pdict[param]['type'] == 'INT':
-                type_id = 6
-            elif pdict[param]['type'] == 'FLOAT':
-                type_id = 9
-            val = pdict[param]['val']
-            name = '{:s}_{:s}'.format(label, param)
-            body += "1\t1\t{name:20s}\t{val:15g}\t{type_id:5d}\n".format(**locals())
+            # resample at 10 second interval using mean of sample
+            # won't significantly impact coefficients,
+            # but will save time and make plots smaller more readable
+            data = r[topic][multi_id].ffill().bfill()
 
-    # simple template file output
-    text = """# Sensor thermal compensation parameters
-#
-# Vehicle-Id Component-Id Name Value Type
-{body:s}
-""".format(body=body)
+            x = data.temperature
 
-    with open(out_path, 'w') as f:
-        f.write(text)
-    
+            # default for coefficients
+            coeffs[name] = {
+                'poly': {},
+                'T_min': x.min(),
+                'T_max': x.max(),
+                'T_ref': 0,
+            }
+
+            plt.figure()
+
+            for i, field in enumerate(config['fields']):
+                y = data[field]
+                y -= config['offset'](y)
+                f_poly = Polynomial.fit(x, y, config['poly_deg'])
+                coeffs[name]['poly'][field] = list(f_poly.coef)
+
+                if do_plot:
+                    fitPlot(
+                        x=x, y=y, f_poly=f_poly, name=name, field=field,
+                        config=config)
+                    if config['save_plot'] and i == len(config['fields']) - 1:
+                        plt.savefig('{:s}.pdf'.format(name))
+
+
+    with open(ulog_filename.replace('ulg', 'params'), 'w') as fid:
+        fid.write(json.dumps(coeffs, indent=2, sort_keys=True))
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-    description='Analyse the sensor_gyro  message data')
-    parser.add_argument('filename', metavar='file.ulg', help='ULog input file')
+    parser = argparse.ArgumentParser('Temperature calibration')
+    parser.add_argument('ulog')
+    parser.add_argument('--noplot', action='store_true', default=False)
     args = parser.parse_args()
-    ulog_file_name = args.filename
-    template_path = os.path.join(os.path.dirname(
-        os.path.realpath(__file__)), 'templates')
-    process_file(log_path=args.filename, out_path=ulog_file_name.replace('ulg', 'params'),
-            template_path=template_path)
+    temperature_calibration(args.ulog, not args.noplot)
 
-#  vim: set et fenc=utf-8 ff=unix sts=0 sw=4 ts=4 : 
+#  vim: set et fenc=utf-8 ff=unix sts=0 sw=4 ts=4 :
